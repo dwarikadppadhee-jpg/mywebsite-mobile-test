@@ -1,0 +1,151 @@
+> function renderAdminUsers(){
+    const list=document.getElementById("adminUserList");if(!list)return;
+    const adminUser=activeUser();const activeUsers=users().sort((a,b)=>a.name.localeCompare(b.name));
+    list.innerHTML=`<div class="bulk-delete-toolbar"><label class="bulk-select-all-label"><input type="checkbox" id="selectAllUsers"> Select All</label><button type="button" class="compact-button action-reject" id="bulkDeleteButton" disabled>Delete Selected</button></div><div class="admin-user-table-wrap"><table class="credential-table"><thead><tr><th style="width:36px"></th><th>Name</th><th>Employee ID</th><th>Role</th><th>Department</th><th>Email</th><th>Reports To</th><th>Action</th></tr></thead><tbody>${activeUsers.map((u,idx)=>{
+      const editing=editingAdminUserId===u.employeeId;
+      if(editing)return`<tr class="admin-user-edit-row ${idx%2===0?"":"cred-row-alt"}" data-editing-user="${escapeHtml(u.employeeId)}"><td></td><td><input class="admin-inline-input" data-edit-field="name" value="${escapeHtml(u.name)}"></td><td><input class="admin-inline-input" data-edit-field="employeeId" value="${escapeHtml(u.employeeId)}"></td><td><select class="admin-inline-input" data-edit-field="level">${["admin","1","2","3"].map(level=>`<option value="${level}" ${u.level===level?"selected":""}>${escapeHtml(ROLE_LABELS[level]||level)}</option>`).join("")}</select></td><td><input class="admin-inline-input" data-edit-field="department" value="${escapeHtml(u.department)}"></td><td><input class="admin-inline-input" data-edit-field="email" type="email" value="${escapeHtml(u.email||"")}" placeholder="name@company.com"></td><td><input class="admin-inline-input" data-edit-field="managerId" list="userSearchList" value="${escapeHtml(u.managerId||"")}" placeholder="Manager ID"></td><td><div class="action-row"><button type="button" class="compact-button action-approve" data-save-user="${escapeHtml(u.employeeId)}">Save</button><button type="button" class="compact-button" data-cancel-user-edit>Cancel</button></div></td></tr>`;
+      return`<tr class="${idx%2===0?"":"cred-row-alt"}"><td>${u.employeeId!==adminUser?.employeeId?`<input type="checkbox" class="user-select-cb" data-id="${escapeHtml(u.employeeId)}">`:`<span title="Cannot delete own account">-</span>`}</td><td><button type="button" class="profile-link" data-open-profile="${escapeHtml(u.employeeId)}">${escapeHtml(u.name)}</button></td><td>${escapeHtml(u.employeeId)}</td><td>${escapeHtml(ROLE_LABELS[u.level]||u.level)}</td><td>${escapeHtml(u.department)}</td><td>${escapeHtml(u.email||"-")}</td><td>${escapeHtml(u.managerName||"-")}</td><td><div class="action-row"><button type="button" class="compact-button" data-edit-user="${escapeHtml(u.employeeId)}">Edit</button>${u.employeeId!==adminUser?.employeeId?`<button type="button" class="compact-button action-reject" data-delete-user="${escapeHtml(u.employeeId)}">Delete</button>`:`<span class="helper-text">You</span>`}</div></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+    const selectAll=list.querySelector("#selectAllUsers");const bulkBtn=list.querySelector("#bulkDeleteButton");
+    const updateBulkBtn=()=>{const checked=list.querySelectorAll(".user-select-cb:checked").length;if(bulkBtn)bulkBtn.disabled=checked===0;};
+    selectAll?.addEventListener("change",()=>{list.querySelectorAll(".user-select-cb").forEach(cb=>cb.checked=selectAll.checked);updateBulkBtn();});
+    list.querySelectorAll(".user-select-cb").forEach(cb=>cb.addEventListener("change",updateBulkBtn));
+    bulkBtn?.addEventListener("click",async()=>{
+      const ids=[...list.querySelectorAll(".user-select-cb:checked")].map(cb=>cb.getAttribute("data-id"));if(!ids.length)return;
+      const names=ids.map(id=>findUser(id)?.name||id).join(", ");const confirmed=window.confirm(`Delete ${ids.length} employee(s)?\n\n${names}`);if(!confirmed)return;
+      const reason=window.prompt("Enter reason for bulk deletion:");if(!reason||!reason.trim()){window.alert("Reason is required.");return;}
+      let removed=0;
+      for(const id of ids){if(findUser(id)&&await cloudDeleteUser(id,adminUser.employeeId,reason.trim()))removed++;}
+      if(removed){showToast("Bulk Delete",`${removed} employee(s) removed successfully.`);await refreshAllCloudData();renderPortal();}
+    });
+    list.querySelectorAll("[data-open-profile]").forEach(btn=>btn.addEventListener("click",()=>openProfile(btn.getAttribute("data-open-profile"))));
+    list.querySelectorAll("[data-edit-user]").forEach(btn=>btn.addEventListener("click",()=>{editingAdminUserId=btn.getAttribute("data-edit-user")||"";renderUserManagement();}));
+    list.querySelectorAll("[data-cancel-user-edit]").forEach(btn=>btn.addEventListener("click",()=>{editingAdminUserId="";renderUserManagement();}));
+    list.querySelectorAll("[data-save-user]").forEach(btn=>btn.addEventListener("click",async()=>{
+      const originalId=btn.getAttribute("data-save-user")||"";const row=list.querySelector("[data-editing-user]");if(!row)return;
+      const get=field=>String(row.querySelector(`[data-edit-field="${field}"]`)?.value||"").trim();
+      const level=get("level");const employeeId=normalizeEmployeeId(get("employeeId"));const managerId=normalizeEmployeeId(get("managerId"));
+      if(!employeeId||!get("name")||!get("department")){window.alert("Name, Employee ID, and Department are required.");return;}
+      if((level==="2"||level==="3")&&!managerId){window.alert("Select a valid reporting manager.");return;}
+      const manager=managerId?findUser(managerId):null;
+      if(level==="2"&&manager?.level!=="1"){window.alert("Level 2 must report to a Level 1 manager.");return;}
+      if(level==="3"&&manager?.level!=="1"&&manager?.level!=="2"){window.alert("Level 3 must report to a Level 1 or Level 2 manager.");return;}
+      const result=await cloudUpdateUserProfile(originalId,{employeeId,name:get("name"),level,department:get("department"),email:get("email"),managerId});
+      if(!result.ok){window.alert(`Could not update user: ${result.error?.message||"Unknown error"}`);return;}
+      editingAdminUserId="";showToast("User Updated",`${employeeId} was updated.`);await refreshAllCloudData();renderPortal();
+    }));
+    list.querySelectorAll("[data-delete-user]").forEach(btn => btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-delete-user");
+      const target = findUser(id);
+      if (!target) return;
+      
+      const subordinates = users().filter(u => u.managerId === target.employeeId);
+      let newManagerId = "";
+      if (subordinates.length > 0) {
+        const p = window.prompt(`This employee has ${subordinates.length} subordinate(s).\nTo reassign them, enter the Employee ID of the new manager.\nLeave blank to orphan them.`);
+        if (p !== null && p.trim()) {
+          const newManager = findUser(p.trim());
+          if (!newManager) {
+            window.alert("New manager not found. Deletion cancelled.");
+            return;
+          }
+          if (newManager.level !== target.level && newManager.level !== "1") {
+             const proceed = window.confirm(`Warning: The new manager has role ${newManager.level}. This might conflict with hierarchy rules. Continue?`);
+             if(!proceed) return;
+          }
+          newManagerId = newManager.employeeId;
+        } else if (p === null) {
+          return; // Cancelled
+        }
+      }
+  
+      const confirmed = window.confirm(`Delete employee ${target.employeeId}?`);
+      if (!confirmed) return;
+      const reason = window.prompt("Enter reason for deletion:");
+      if (!reason || !reason.trim()) {
+        window.alert("Reason is required.");
+        return;
+      }
+  
+      if (subordinates.length > 0) {
+        for (const sub of subordinates) {
+          await cloudUpdateUserProfile(sub.employeeId, { ...sub, managerId: newManagerId });
+        }
+      }
+  
+      const removed = await cloudDeleteUser(id, adminUser.employeeId, reason.trim());
+      if (!removed) {
+        window.alert("Could not delete this employee in Supabase. Check the console for details.");
+        return;
+      }
+      showToast("User Deleted", `${target.name} was removed.`);
+      await refreshAllCloudData();
+      renderPortal();
+    }));
+  }
+  function renderAdminCredentials(){
+    const container=document.getElementById("adminCredentialList");if(!container)return;
+    const LEVEL_TABS=[{key:"all",label:"All"},{key:"admin",label:"Admin"},{key:"1",label:"Level 1"},{key:"2",label:"Level 2"},{key:"3",label:"Level 3"}];
+    const allUsers=users().sort((a,b)=>{const lo=({admin:0,"1":1,"2":2,"3":3}[a.level]??9)-({admin:0,"1":1,"2":2,"3":3}[b.level]??9);return lo!==0?lo:a.name.localeCompare(b.name);});
+    const filtered=credentialLevelFilter==="all"?allUsers:allUsers.filter(u=>u.level===credentialLevelFilter);
+    container.innerHTML=`<div class="cred-filter-bar">${LEVEL_TABS.map(t=>`<button type="button" class="compact-button cred-tab ${credentialLevelFilter===t.key?"active-mode":""}" data-cred-level="${escapeHtml(t.key)}">${escapeHtml(t.label)}</button>`).join("")}</div><div class="cred-table-wrap table-wrap"><table class="credential-table"><thead><tr><th>#</th><th>Name</th><th>Employee ID</th><th>Role</th><th>Department</th><th>Password</th></tr></thead><tbody>${filtered.map((u,idx)=>`<tr class="${idx%2===0?"":"cred-row-alt"}"><td class="cred-num">${idx+1}</td><td>${escapeHtml(u.name)}</td><td class="cred-id">${escapeHtml(u.employeeId)}</td><td><span class="cred-level-badge cred-level-${escapeHtml(u.level)}">${escapeHtml(ROLE_LABELS[u.level]||u.level)}</span></td><td>${escapeHtml(u.department)}</td><td class="cred-pass">${escapeHtml(u.password||"—")}</td></tr>`).join("")}</tbody></table>${filtered.length===0?'<p class="empty-state" style="padding:16px">No employees in this level.</p>':""}</div>`;
+    container.querySelectorAll("[data-cred-level]").forEach(btn=>btn.addEventListener("click",()=>{credentialLevelFilter=btn.getAttribute("data-cred-level")||"all";renderAdminCredentials();}));
+  }
+  function renderUserManagement(){ renderHolidayManagement();renderAdminUsers();renderAdminCredentials();renderDeletedUsers();toggleManagerField(); }
+  function renderAdminCollapsibles(){
+    document.querySelectorAll("[data-admin-toggle]").forEach(toggle=>{
+      const key=toggle.getAttribute("data-admin-toggle")||"";
+      const expanded=adminExpandedPanels.has(key);
+      const panel=document.getElementById(`adminPanel-${key}`);
+      toggle.setAttribute("aria-expanded",expanded?"true":"false");
+      toggle.closest(".admin-collapsible")?.classList.toggle("is-open",expanded);
+      panel?.classList.toggle("hidden",!expanded);
+    });
+  }
+  function renderGlobalTaskForm(){
+    const fb=document.getElementById("globalTaskFeedback");
+    const user=activeUser();
+    if(fb)fb.textContent=isLevel1(user)?"Level 1 can assign internal or project tasks to Level 2 and Level 3 employees.":"Tagged tasks appear instantly in the assignee's Assigned Tasks section.";
+  }
+  
+  // ─── News ─────────────────────────────────────────────────────
+  function festivalForToday(){ const key=dateKey().slice(5);return FESTIVAL_EVENTS.find(e=>e.date===key)||null; }
+  function renderNews(user){
+    const container=document.getElementById("metroDailyFeed");const banner=document.getElementById("festivalBanner");const ticker=document.getElementById("metroTicker");const adminPanel=document.getElementById("broadcastComposer");
+    const currentFestival=festivalForToday();const items=announcementsForUser(user).slice(0,6);
+    if(banner){if(currentFestival){banner.classList.remove("hidden");banner.innerHTML=`<div class="festival-banner-copy"><span class="section-tag">Metro Daily</span><h2>${escapeHtml(currentFestival.title)}</h2><p>${escapeHtml(currentFestival.message)}</p></div>`;}else{banner.classList.add("hidden");banner.innerHTML="";}}
+    if(ticker){if(!items.length){ticker.className="metro-ticker empty-state";ticker.textContent="No broadcasts yet.";}else{ticker.className="metro-ticker";ticker.innerHTML=`<div class="metro-ticker-track">${items.concat(items).map(i=>`<article class="metro-ticker-item"><strong>${escapeHtml(i.title||"Broadcast")}</strong><span>${escapeHtml(i.message)}</span></article>`).join("")}</div>`;}}
+    if(adminPanel)adminPanel.classList.toggle("hidden",!canPublishDailyUpdates(user));
+    if(container){const latest=items.slice(0,3);container.innerHTML=latest.length?latest.map(i=>`<article class="assignment-card news-card"><header><strong>${escapeHtml(i.title||"Broadcast")}</strong><span class="status-pill">${escapeHtml(formatDateTime(i.createdAt))}</span></header><p>${escapeHtml(i.message)}</p><p class="helper-text">${escapeHtml(i.createdByName||"Metro Daily")}</p></article>`).join(""):'<div class="empty-state">Company updates will appear here.</div>';}
+  }
+  
+  // ─── Notification routing ─────────────────────────────────────
+  function openReportFromNotification(reportId){
+    const user=activeUser();const report=findReportById(reportId);if(!user||!report)return;
+    if(report.employeeId===user.employeeId){
+      selectedHistoryReportId=report.id;showSection("historySection");renderPortal();
+      document.getElementById("historySection")?.scrollIntoView({behavior:"smooth",block:"start"});
+      return;
+    }
+    if(isLevel2(user) || isLevel3(user)){
+      selectedTeamReportId=report.id;showSection("teamReportsSection");renderPortal();
+      document.getElementById("teamReportsSection")?.scrollIntoView({behavior:"smooth",block:"start"});
+      return;
+    }
+    if(canUseCompliance(user)){selectedComplianceEmployeeId=report.employeeId;showSection("complianceSection");renderPortal();}
+  }
+  function openNotificationItem(item){
+    const user=activeUser();if(!user||!item)return;
+    if(item.kind==="announcement"){showSection("newsSection");renderPortal();document.getElementById("newsSection")?.scrollIntoView({behavior:"smooth",block:"start"});return;}
+    if(item.kind==="reminder"&&!item.reportId){showSection("darSection");renderPortal();document.getElementById("darSection")?.scrollIntoView({behavior:"smooth",block:"start"});return;}
+    if(item.kind==="notification" && item.message && item.message.includes("assigned you a")){
+      showSection("tasksSection");renderPortal();document.getElementById("tasksSection")?.scrollIntoView({behavior:"smooth",block:"start"});return;
+    }
+    if(item.reportId)openReportFromNotification(item.reportId);
+  }
+  
+  // ─── Employee search helpers ──────────────────────────────────
+  function searchableEmployees(viewer,scope="profile"){
+    const all=users().filter(u=>u.level!=="admin");
+    if(scope==="history-level1")return all.filter(u=>u.level==="2"||u.level==="3");
+    if(scope==="task")return assignableTaskTargets(viewer);

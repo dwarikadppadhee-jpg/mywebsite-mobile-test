@@ -1,0 +1,45 @@
+﻿const fs = require('fs');
+let code = fs.readFileSync('app.js', 'utf8');
+
+const oldHeader = '<thead><tr><th style="width:36px"></th><th>Name</th><th>Entity & Tags</th><th>Department</th><th>Role</th><th>Employee ID</th><th>Work Location</th><th>Email</th><th>Official Phone</th><th>Personal Phone</th><th>Reports To</th><th>Level</th><th>Action</th></tr></thead>';
+const newHeader = '<thead><tr><th style="width:36px"></th><th>Employee ID</th><th>Name</th><th>Entity Name</th><th>Department</th><th>Role</th><th>Work Location</th><th>Work E-Mail</th><th>Official Mobile</th><th>Personal Num</th><th>Operational Manager Name</th><th>Level</th><th>Action</th></tr></thead>';
+code = code.replace(oldHeader, newHeader);
+
+const oldEditRow = '        return `<tr class="admin-user-edit-row ${idx%2===0?"":"cred-row-alt"}" data-editing-user="${escapeHtml(u.employeeId)}">\n          <td></td>\n          <td><input class="admin-inline-input" data-edit-field="name" value="${escapeHtml(u.name)}"></td>\n          <td><select class="admin-inline-input" data-edit-field="entity">${entityOpts}</select>${tagsHtml}</td>\n          <td><input class="admin-inline-input" data-edit-field="department" value="${escapeHtml(u.department)}" placeholder="Department"></td>\n          <td><input class="admin-inline-input" data-edit-field="role" value="${escapeHtml(u.role||"")}" placeholder="Software Engineer"></td>\n          <td><input class="admin-inline-input" data-edit-field="employeeId" value="${escapeHtml(u.employeeId)}"></td>\n          <td><input class="admin-inline-input" data-edit-field="workLocation" value="${escapeHtml(u.location||"")}" placeholder="HQ"></td>\n          <td><input class="admin-inline-input" data-edit-field="email" type="email" value="${escapeHtml(u.email||"")}" placeholder="name@company.com"></td>\n          <td><input class="admin-inline-input" data-edit-field="officialPhone" value="${escapeHtml(u.officialPhone||"")}" placeholder="Official Phone"></td>\n          <td><input class="admin-inline-input" data-edit-field="personalPhone" value="${escapeHtml(u.personalPhone||"")}" placeholder="Personal Phone"></td>\n          <td>${managerHtml}</td>\n          <td><select class="admin-inline-input" data-edit-field="level">${["admin","1","2","3"].map(level=>`<option value="${level}" ${u.level===level?"selected":""}>${escapeHtml(ROLE_LABELS[level]||level)}</option>`).join("")}</select></td>\n          <td><div class="action-row"><button type="button" class="compact-button action-approve" data-save-user="${escapeHtml(u.employeeId)}">Save</button><button type="button" class="compact-button" data-cancel-user-edit>Cancel</button></div></td>\n        </tr>`;';
+
+const newEditRow = '        return `<tr class="admin-user-edit-row ${idx%2===0?"":"cred-row-alt"}" data-editing-user="${escapeHtml(u.employeeId)}">\n          <td></td>\n          <td><input class="admin-inline-input" data-edit-field="employeeId" value="${escapeHtml(u.employeeId)}"></td>\n          <td><input class="admin-inline-input" data-edit-field="name" value="${escapeHtml(u.name)}"></td>\n          <td><select class="admin-inline-input" data-edit-field="entity">${entityOpts}</select>${tagsHtml}</td>\n          <td><input class="admin-inline-input" data-edit-field="department" value="${escapeHtml(u.department)}" placeholder="Department"></td>\n          <td><input class="admin-inline-input" data-edit-field="role" value="${escapeHtml(u.role||"")}" placeholder="Software Engineer"></td>\n          <td><input class="admin-inline-input" data-edit-field="workLocation" value="${escapeHtml(u.location||"")}" placeholder="HQ"></td>\n          <td><input class="admin-inline-input" data-edit-field="email" type="email" value="${escapeHtml(u.email||"")}" placeholder="name@company.com"></td>\n          <td><input class="admin-inline-input" data-edit-field="officialPhone" value="${escapeHtml(u.officialPhone||"")}" placeholder="Official Phone"></td>\n          <td><input class="admin-inline-input" data-edit-field="personalPhone" value="${escapeHtml(u.personalPhone||"")}" placeholder="Personal Phone"></td>\n          <td>${managerHtml}</td>\n          <td><select class="admin-inline-input" data-edit-field="level">${["admin","1","2","3"].map(level=>`<option value="${level}" ${u.level===level?"selected":""}>${escapeHtml(ROLE_LABELS[level]||level)}</option>`).join("")}</select></td>\n          <td><div class="action-row"><button type="button" class="compact-button action-approve" data-save-user="${escapeHtml(u.employeeId)}">Save</button><button type="button" class="compact-button" data-cancel-user-edit>Cancel</button></div></td>\n        </tr>`;';
+
+code = code.replace(oldEditRow, newEditRow);
+
+const oldViewRow = '      return `<tr class="${idx%2===0?"":"cred-row-alt"}">\n        <td>${u.employeeId!==adminUser?.employeeId?`<input type="checkbox" class="user-select-cb" data-id="${escapeHtml(u.employeeId)}">`:`<span title="Cannot delete own account">-</span>`}</td>\n        <td><button type="button" class="profile-link" data-open-profile="${escapeHtml(u.employeeId)}">${escapeHtml(u.name)}</button></td>\n        <td>${tagDisplay}</td>\n        <td>${escapeHtml(u.department||"-")}</td>\n        <td>${escapeHtml(u.role||"-")}</td>\n        <td>${escapeHtml(u.employeeId)}</td>\n        <td>${escapeHtml(u.location||"-")}</td>\n        <td>${escapeHtml(u.email||"-")}</td>\n        <td>${escapeHtml(u.officialPhone||"-")}</td>\n        <td>${escapeHtml(u.personalPhone||"-")}</td>\n        <td>${u.level === "1" ? "-" : escapeHtml(u.managerName||"-")}</td>\n        <td>${escapeHtml(ROLE_LABELS[u.level]||u.level)}</td>\n        <td><div class="action-row"><button type="button" class="compact-button" data-edit-user="${escapeHtml(u.employeeId)}">Edit</button>${u.employeeId!==adminUser?.employeeId?`<button type="button" class="compact-button action-reject" data-delete-user="${escapeHtml(u.employeeId)}">Delete</button>`:`<span class="helper-text">You</span>`}</div></td>\n      </tr>`;';
+
+const newViewRow = '      return `<tr class="${idx%2===0?"":"cred-row-alt"}">\n        <td>${u.employeeId!==adminUser?.employeeId?`<input type="checkbox" class="user-select-cb" data-id="${escapeHtml(u.employeeId)}">`:`<span title="Cannot delete own account">-</span>`}</td>\n        <td>${escapeHtml(u.employeeId)}</td>\n        <td><button type="button" class="profile-link" data-open-profile="${escapeHtml(u.employeeId)}">${escapeHtml(u.name)}</button></td>\n        <td>${tagDisplay}</td>\n        <td>${escapeHtml(u.department||"-")}</td>\n        <td>${escapeHtml(u.role||"-")}</td>\n        <td>${escapeHtml(u.location||"-")}</td>\n        <td>${escapeHtml(u.email||"-")}</td>\n        <td>${escapeHtml(u.officialPhone||"-")}</td>\n        <td>${escapeHtml(u.personalPhone||"-")}</td>\n        <td>${u.level === "1" ? "-" : escapeHtml(u.managerName||"-")}</td>\n        <td>${escapeHtml(ROLE_LABELS[u.level]||u.level)}</td>\n        <td><div class="action-row"><button type="button" class="compact-button" data-edit-user="${escapeHtml(u.employeeId)}">Edit</button>${u.employeeId!==adminUser?.employeeId?`<button type="button" class="compact-button action-reject" data-delete-user="${escapeHtml(u.employeeId)}">Delete</button>`:`<span class="helper-text">You</span>`}</div></td>\n      </tr>`;';
+
+code = code.replace(oldViewRow, newViewRow);
+
+
+// Update excel parser
+const oldParser = `        if (row["Role"]) mergedUser.role = row["Role"];
+        if (row["Work Location"]) mergedUser.location = row["Work Location"];
+        if (row["Official Phone"]) mergedUser.officialPhone = String(row["Official Phone"]);
+        if (row["Personal Phone"]) mergedUser.personalPhone = String(row["Personal Phone"]);
+        if (row["Email"]) mergedUser.email = row["Email"];
+        if (row["Reports To"]) mergedUser.managerId = row["Reports To"];
+        if (row["Entity"]) mergedUser.entity = row["Entity"];
+        if (row["Level"]) mergedUser.level = String(row["Level"]).toLowerCase() === 'admin' ? 'admin' : String(row["Level"]).replace(/\\D/g, '') || "3";
+        if (row["Name"]) mergedUser.name = row["Name"];`;
+        
+const newParser = `        if (row["Role"]) mergedUser.role = row["Role"];
+        if (row["Work Location"]) mergedUser.location = row["Work Location"];
+        if (row["Official Mobile"]) mergedUser.officialPhone = String(row["Official Mobile"]);
+        if (row["Personal Num"]) mergedUser.personalPhone = String(row["Personal Num"]);
+        if (row["Work E-Mail"]) mergedUser.email = row["Work E-Mail"];
+        if (row["Operational Manager Name"]) mergedUser.managerId = row["Operational Manager Name"];
+        if (row["Entity Name"]) mergedUser.entity = row["Entity Name"];
+        if (row["Department"]) mergedUser.department = row["Department"];
+        if (row["Level"]) mergedUser.level = String(row["Level"]).toLowerCase() === 'admin' ? 'admin' : String(row["Level"]).replace(/\\D/g, '') || "3";
+        if (row["Name"]) mergedUser.name = row["Name"];`;
+
+code = code.replace(oldParser, newParser);
+
+fs.writeFileSync('app.js', code);
