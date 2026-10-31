@@ -14806,68 +14806,226 @@ body.theme-dark .dar-timeline-item-card {
   z-index: 5;
 }
 
+.dar-voice-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
 .dar-voice-btn {
   background: #f1f5f9;
   border: 1px solid #cbd5e1;
   color: #475569;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.2s ease;
+  font-size: 0.85rem;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   outline: none;
   padding: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .dar-voice-btn:hover {
   background: rgba(139, 10, 26, 0.08);
   border-color: var(--maroon, #8B0A1A);
   color: var(--maroon, #8B0A1A);
-  transform: scale(1.06);
+  transform: scale(1.08);
 }
 
+.dar-voice-btn:active {
+  transform: scale(0.94);
+}
+
+/* Active Voice Recording Radar Effect */
 .dar-voice-btn.is-recording {
-  background: #e03131 !important;
-  border-color: #c92a2a !important;
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  border-color: #b91c1c !important;
   color: #ffffff !important;
-  box-shadow: 0 0 0 4px rgba(224, 49, 49, 0.25);
-  animation: voiceMicPulse 1.2s infinite ease-in-out;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.35), 0 0 14px rgba(239, 68, 68, 0.6) !important;
+  animation: voiceMicPulse 1.25s infinite ease-in-out;
 }
 
-.dar-voice-btn.is-recording .dar-voice-ring {
+.dar-voice-btn.is-recording .dar-voice-icon {
+  animation: voiceMicIconShake 1.25s infinite ease-in-out;
+}
+
+.dar-voice-ring {
   position: absolute;
-  inset: -4px;
+  inset: -3px;
   border-radius: 50%;
-  border: 2px solid #e03131;
-  animation: voiceRingExpand 1.2s infinite ease-out;
+  border: 2px solid rgba(239, 68, 68, 0.8);
+  opacity: 0;
   pointer-events: none;
 }
 
+.dar-voice-btn.is-recording .dar-voice-ring {
+  animation: voiceRingExpand 1.6s infinite cubic-bezier(0.2, 0.7, 0.4, 1);
+}
+
+.dar-voice-btn.is-recording .dar-voice-ring.ring-1 {
+  animation-delay: 0s;
+}
+
+.dar-voice-btn.is-recording .dar-voice-ring.ring-2 {
+  animation-delay: 0.52s;
+}
+
+.dar-voice-btn.is-recording .dar-voice-ring.ring-3 {
+  animation-delay: 1.05s;
+}
+
 @keyframes voiceMicPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.12); }
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3), 0 0 10px rgba(239, 68, 68, 0.5);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.45), 0 0 18px rgba(239, 68, 68, 0.75);
+  }
+}
+
+@keyframes voiceMicIconShake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
 }
 
 @keyframes voiceRingExpand {
-  0% { transform: scale(0.85); opacity: 0.9; }
-  100% { transform: scale(1.65); opacity: 0; }
+  0% {
+    transform: scale(0.9);
+    opacity: 0.95;
+    border-color: rgba(239, 68, 68, 0.95);
+  }
+  55% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+    border-color: rgba(239, 68, 68, 0);
+  }
+}
+
+/* Audio Wave Equalizer Bars */
+.dar-voice-equalizer {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+  padding: 0 3px;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  transition: opacity 0.25s ease, max-width 0.25s ease;
+  pointer-events: none;
+}
+
+.dar-voice-equalizer.active {
+  opacity: 1;
+  max-width: 44px;
+}
+
+.dar-voice-equalizer .vbar {
+  width: 3px;
+  background: #ef4444;
+  border-radius: 2px;
+  transform-origin: bottom;
+  animation: voiceBarBounce 0.75s infinite ease-in-out alternate;
+}
+
+.dar-voice-equalizer .vbar.b1 { height: 7px; animation-delay: 0.1s; }
+.dar-voice-equalizer .vbar.b2 { height: 16px; animation-delay: 0.26s; }
+.dar-voice-equalizer .vbar.b3 { height: 10px; animation-delay: 0.42s; }
+.dar-voice-equalizer .vbar.b4 { height: 17px; animation-delay: 0.18s; }
+
+@keyframes voiceBarBounce {
+  0% { transform: scaleY(0.25); opacity: 0.6; }
+  100% { transform: scaleY(1.25); opacity: 1; }
+}
+
+/* Voice Language Pill Button */
+.dar-voice-lang-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  line-height: 1.25;
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dar-voice-lang-btn:hover {
+  background: rgba(139, 10, 26, 0.08);
+  border-color: var(--maroon, #8B0A1A);
+  color: var(--maroon, #8B0A1A);
+}
+
+/* Glowing Listening Outline on Textarea */
+textarea#pointInput.is-voice-listening {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2), 0 0 16px rgba(239, 68, 68, 0.12) !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 body.theme-dark .dar-voice-btn {
   background: #1e293b;
   border-color: #334155;
   color: #94a3b8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 body.theme-dark .dar-voice-btn:hover {
   background: rgba(225, 29, 72, 0.2);
   border-color: #f43f5e;
   color: #f43f5e;
+}
+
+body.theme-dark .dar-voice-btn.is-recording {
+  background: linear-gradient(135deg, #f43f5e, #e11d48) !important;
+  border-color: #be123c !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.35), 0 0 18px rgba(244, 63, 94, 0.7) !important;
+}
+
+body.theme-dark .dar-voice-ring {
+  border-color: rgba(244, 63, 94, 0.85);
+}
+
+body.theme-dark .dar-voice-lang-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+
+body.theme-dark .dar-voice-lang-btn:hover {
+  background: rgba(225, 29, 72, 0.2);
+  border-color: #f43f5e;
+  color: #f43f5e;
+}
+
+body.theme-dark .dar-voice-equalizer .vbar {
+  background: #f43f5e;
+}
+
+body.theme-dark textarea#pointInput.is-voice-listening {
+  border-color: #f43f5e !important;
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.28), 0 0 18px rgba(244, 63, 94, 0.2) !important;
 }
 
 .dar-desc-info-icon {

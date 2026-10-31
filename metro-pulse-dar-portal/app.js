@@ -9083,19 +9083,172 @@ function initDarVoiceRecognition() {
   if (!voiceBtn) return;
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const equalizerEl = document.getElementById("darVoiceEqualizer");
+  const langToggleBtn = document.getElementById("darVoiceLangToggle");
 
   let recognition = null;
   let isRecording = false;
   let baseTextAtStart = "";
-  let finalSpokenAccumulated = "";
+  let sessionFinalText = "";
+  let sessionInterimText = "";
+  let draftSaveDebounceTimer = null;
+  let restartTimeout = null;
+
+  // Language preference: explicitly default to "en-IN" (Indian English)
+  // This prevents mobile browsers from defaulting to US English or regional scripts which corrupt Indian diction
+  let activeLang = localStorage.getItem("metro_dar_voice_lang") || "en-IN";
+  if (activeLang !== "en-IN" && activeLang !== "hi-IN") {
+    activeLang = "en-IN";
+  }
+
+  function updateLangToggleUI() {
+    if (!langToggleBtn) return;
+    if (activeLang === "hi-IN") {
+      langToggleBtn.textContent = "HI";
+      langToggleBtn.setAttribute("title", "Voice Language: Hindi. Click to switch to English (India)");
+      langToggleBtn.setAttribute("aria-label", "Switch voice language to English");
+    } else {
+      langToggleBtn.textContent = "EN";
+      langToggleBtn.setAttribute("title", "Voice Language: English (India). Click to switch to Hindi");
+      langToggleBtn.setAttribute("aria-label", "Switch voice language to Hindi");
+    }
+  }
+  updateLangToggleUI();
+
+  if (langToggleBtn) {
+    langToggleBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      activeLang = activeLang === "en-IN" ? "hi-IN" : "en-IN";
+      localStorage.setItem("metro_dar_voice_lang", activeLang);
+      updateLangToggleUI();
+      // If actively recording, commit text and restart recognition with the new language
+      if (isRecording && recognition) {
+        commitCurrentSessionText();
+        try { recognition.stop(); } catch (err) {}
+      }
+    });
+  }
+
+  // Domain terms and punctuation post-processing
+  function formatSpokenText(raw, lang, isInterim) {
+    if (!raw) return "";
+    let t = raw;
+
+    // Spoken punctuation commands
+    t = t.replace(/\b(full\s*stop|period)\b/gi, ".");
+    t = t.replace(/\b(comma)\b/gi, ",");
+    t = t.replace(/\b(question\s*mark)\b/gi, "?");
+    t = t.replace(/\b(exclamation\s*mark|exclamation\s*point)\b/gi, "!");
+    t = t.replace(/\b(colon)\b/gi, ":");
+    t = t.replace(/\b(new\s*line|next\s*line)\b/gi, "\n");
+
+    // Real estate and construction portal terminology
+    t = t.replace(/\b(d\s*a\s*r|the\s*a\s*r)\b/gi, "DAR");
+    t = t.replace(/\b(m\s*d\s*a\s*r)\b/gi, "MDAR");
+    t = t.replace(/\b(b\s*o\s*q|be\s*okay)\b/gi, "BOQ");
+    t = t.replace(/\b(p\s*o)\b/gi, "PO");
+    t = t.replace(/\b(r\s*e\s*r\s*a)\b/gi, "RERA");
+    t = t.replace(/\b(m\s*k\s*c)\b/gi, "MKC");
+    t = t.replace(/\b(r\s*c\s*c)\b/gi, "RCC");
+    t = t.replace(/\b(p\s*c\s*c)\b/gi, "PCC");
+    t = t.replace(/\b(m\s*o\s*m)\b/gi, "MOM");
+    t = t.replace(/\b(square\s*feet|sq\s*ft|sqft)\b/gi, "sq.ft");
+    t = t.replace(/\b(square\s*meter|square\s*meters|sq\s*m|sqm)\b/gi, "sq.m");
+
+    // Clean up punctuation spacing
+    t = t.replace(/\s+([.,!?:])/g, "$1");
+    t = t.replace(/([.,!?:])([^\s0-9\n])/g, "$1 $2");
+
+    // Deduplicate immediate accidental duplicate words emitted by mobile audio stutter
+    t = t.replace(/\b([a-zA-Z]{2,})\s+\1\b/gi, "$1");
+
+    // Capitalize sentence beginnings
+    t = t.replace(/(^\s*|[.!?\n]\s+)([a-z])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+
+    return t;
+  }
+
+  function cleanJoin(base, addition) {
+    const b = (base || "").trim();
+    const a = (addition || "").trim();
+    if (!b) return a;
+    if (!a) return b;
+    if (b.endsWith("\n")) return b + a;
+    if (/^[.,!?:;]/.test(a)) return b + a;
+    return b + " " + a;
+  }
+
+  function commitCurrentSessionText() {
+    if (!sessionFinalText && !sessionInterimText) return;
+    const finalClean = formatSpokenText(sessionFinalText, activeLang);
+    const interimClean = formatSpokenText(sessionInterimText, activeLang, true);
+    const combinedSession = cleanJoin(finalClean, interimClean);
+    if (combinedSession) {
+      baseTextAtStart = cleanJoin(baseTextAtStart, combinedSession);
+    }
+    sessionFinalText = "";
+    sessionInterimText = "";
+  }
+
+  function applyTextToInputs(text) {
+    const safeText = (text || "").slice(0, 600);
+    const pointDesk = document.getElementById("pointInput");
+    const pointMob = document.getElementById("mobilePointInput");
+
+    if (pointDesk && pointDesk.value !== safeText) {
+      pointDesk.value = safeText;
+    }
+    if (pointMob && pointMob.value !== safeText) {
+      pointMob.value = safeText;
+    }
+
+    const charCount = document.getElementById("pointCharCount");
+    if (charCount) charCount.textContent = `${safeText.length} / 600`;
+
+    updateDarTypingState();
+
+    // Debounce draft save (800ms) to keep UI thread fast and audio buffer clear
+    clearTimeout(draftSaveDebounceTimer);
+    draftSaveDebounceTimer = setTimeout(() => {
+      const user = activeUser();
+      if (user) saveCurrentDraftFromInputs(user);
+    }, 800);
+  }
 
   function stopRecognition() {
     isRecording = false;
+    clearTimeout(restartTimeout);
+
     if (recognition) {
       try { recognition.stop(); } catch (e) {}
     }
+
+    // Tactile confirmation on mobile
+    if (navigator.vibrate) {
+      try { navigator.vibrate([25, 40, 25]); } catch (e) {}
+    }
+
+    // Visual indicators off
     voiceBtn.classList.remove("is-recording");
     voiceBtn.setAttribute("title", "Click to speak (Real-time voice-to-text dictation)");
+    if (equalizerEl) {
+      equalizerEl.classList.remove("active");
+      equalizerEl.classList.add("hidden");
+    }
+    const pointInput = document.getElementById("pointInput");
+    if (pointInput) {
+      pointInput.classList.remove("is-voice-listening");
+    }
+
+    // Commit any in-flight speech cleanly
+    commitCurrentSessionText();
+    applyTextToInputs(baseTextAtStart);
+
+    // Save final draft immediately
+    clearTimeout(draftSaveDebounceTimer);
+    const user = activeUser();
+    if (user) saveCurrentDraftFromInputs(user);
   }
 
   function startRecognition() {
@@ -9110,79 +9263,109 @@ function initDarVoiceRecognition() {
 
     const pointInput = document.getElementById("pointInput") || document.getElementById("mobilePointInput");
     baseTextAtStart = pointInput ? pointInput.value.trim() : "";
-    if (baseTextAtStart.length > 0) {
-      baseTextAtStart += " ";
-    }
-    finalSpokenAccumulated = "";
+    sessionFinalText = "";
+    sessionInterimText = "";
 
     try {
       recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = navigator.language || "en-IN";
+      recognition.maxAlternatives = 1;
+      recognition.lang = activeLang;
 
       recognition.onstart = () => {
         isRecording = true;
+        // Tactile vibration on touch (mobile)
+        if (navigator.vibrate) {
+          try { navigator.vibrate(45); } catch (e) {}
+        }
+        // Visual indicator on microphone and textarea (No popup toast per user request!)
         voiceBtn.classList.add("is-recording");
-        voiceBtn.setAttribute("title", "Listening attentively... Click again to stop dictation");
-        showToast("Listening...", "Speak your task points now. Transcribing in real time...");
+        voiceBtn.setAttribute("title", "Listening attentively... Click to stop dictation");
+        if (equalizerEl) {
+          equalizerEl.classList.remove("hidden");
+          equalizerEl.classList.add("active");
+        }
+        if (pointInput) {
+          pointInput.classList.add("is-voice-listening");
+        }
       };
 
       recognition.onresult = (event) => {
-        let interimTranscript = "";
+        let curFinal = "";
+        let curInterim = "";
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        // Iterate the entire result list of the current recognition session
+        // This is mathematically immune to the Android Chrome resultIndex reset / duplicate bug
+        for (let i = 0; i < event.results.length; i++) {
           const res = event.results[i];
+          if (!res || !res[0]) continue;
+          const phrase = (res[0].transcript || "").trim();
+          if (!phrase) continue;
+
           if (res.isFinal) {
-            finalSpokenAccumulated += (finalSpokenAccumulated ? " " : "") + res[0].transcript.trim();
+            curFinal += (curFinal ? " " : "") + phrase;
           } else {
-            interimTranscript += " " + res[0].transcript;
+            curInterim += (curInterim ? " " : "") + phrase;
           }
         }
 
-        const currentSpoken = (finalSpokenAccumulated + interimTranscript).trim();
-        let fullText = (baseTextAtStart + currentSpoken).slice(0, 600);
+        sessionFinalText = curFinal;
+        sessionInterimText = curInterim;
 
-        const pointDesk = document.getElementById("pointInput");
-        const pointMob = document.getElementById("mobilePointInput");
-        if (pointDesk) {
-          pointDesk.value = fullText;
-          pointDesk.dispatchEvent(new Event("input", { bubbles: true }));
+        const formattedFinal = formatSpokenText(sessionFinalText, activeLang);
+        const formattedInterim = formatSpokenText(sessionInterimText, activeLang, true);
+
+        let liveText = baseTextAtStart;
+        if (formattedFinal) {
+          liveText = cleanJoin(liveText, formattedFinal);
         }
-        if (pointMob) {
-          pointMob.value = fullText;
-          pointMob.dispatchEvent(new Event("input", { bubbles: true }));
+        if (formattedInterim) {
+          liveText = cleanJoin(liveText, formattedInterim);
         }
 
-        const charCount = document.getElementById("pointCharCount");
-        if (charCount) charCount.textContent = `${fullText.length} / 600`;
-
-        const user = activeUser();
-        if (user) saveCurrentDraftFromInputs(user);
-        updateDarTypingState();
+        applyTextToInputs(liveText);
       };
 
       recognition.onerror = (event) => {
         console.warn("Speech recognition error:", event.error);
+        if (event.error === "no-speech" || event.error === "aborted") {
+          // Normal pauses or browser restart; do not alert or stop
+          return;
+        }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           showToast("Microphone Blocked", "Microphone access denied. Please allow microphone permissions in your browser address bar.");
           stopRecognition();
         } else if (event.error === "network") {
           showToast("Speech Network", "Speech recognition service unreachable. If running on file://, please run via http://localhost or Live Server.");
           stopRecognition();
-        } else if (event.error !== "no-speech") {
-          showToast("Microphone Notice", `Speech dictation: ${event.error}`);
+        } else {
           stopRecognition();
         }
       };
 
       recognition.onend = () => {
+        // Mobile browsers frequently stop continuous speech on short silence breaks
         if (isRecording) {
-          try {
-            recognition.start();
-          } catch (e) {
-            stopRecognition();
-          }
+          // Commit finalized session text into baseTextAtStart
+          commitCurrentSessionText();
+
+          // Seamless auto-restart
+          clearTimeout(restartTimeout);
+          restartTimeout = setTimeout(() => {
+            if (isRecording) {
+              try {
+                recognition.start();
+              } catch (e) {
+                // Micro-retry if browser needs brief moment
+                setTimeout(() => {
+                  if (isRecording) {
+                    try { recognition.start(); } catch (err) { stopRecognition(); }
+                  }
+                }, 200);
+              }
+            }
+          }, 100);
         } else {
           stopRecognition();
         }
@@ -9206,7 +9389,6 @@ function initDarVoiceRecognition() {
     }
   });
 }
-
 
 function isDarDraftFieldActive(){
   const active=document.activeElement;

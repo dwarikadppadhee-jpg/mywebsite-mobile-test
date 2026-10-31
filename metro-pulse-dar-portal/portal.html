@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&family=Source+Sans+3:wght@400;600;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=1780925985.99442">
+  <link rel="stylesheet" href="styles.css?v=20261031-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -1568,10 +1568,21 @@ Anita Kapoor,METRO-002,1,Executive,,metro123,anita@metrogroup.local</pre>
                   <div style="position: relative;" class="dar-textarea-wrap">
                     <textarea id="pointInput" rows="4" maxlength="600" placeholder="Describe the work you have done..."></textarea>
                     <div class="dar-textarea-tools">
-                      <button type="button" class="dar-voice-btn" id="btnDarVoiceRecord" title="Click to speak (Real-time voice-to-text dictation)" aria-label="Voice record note">
-                        <i class="fa-solid fa-microphone"></i>
-                        <span class="dar-voice-ring"></span>
-                      </button>
+                      <div class="dar-voice-container" id="darVoiceContainer">
+                        <div class="dar-voice-equalizer hidden" id="darVoiceEqualizer" title="Listening to your voice..." aria-hidden="true">
+                          <span class="vbar b1"></span>
+                          <span class="vbar b2"></span>
+                          <span class="vbar b3"></span>
+                          <span class="vbar b4"></span>
+                        </div>
+                        <button type="button" class="dar-voice-btn" id="btnDarVoiceRecord" title="Click to speak (Real-time voice-to-text dictation)" aria-label="Voice record note">
+                          <i class="fa-solid fa-microphone dar-voice-icon"></i>
+                          <span class="dar-voice-ring ring-1"></span>
+                          <span class="dar-voice-ring ring-2"></span>
+                          <span class="dar-voice-ring ring-3"></span>
+                        </button>
+                        <button type="button" class="dar-voice-lang-btn" id="darVoiceLangToggle" title="Language: English (India). Click to switch to Hindi" aria-label="Switch voice language">EN</button>
+                      </div>
                       <span class="dar-desc-info-icon" title="DAR Point Description is required"><i class="fa-solid fa-circle-exclamation"></i></span>
                     </div>
                   </div>
@@ -2246,7 +2257,7 @@ Anita Kapoor,METRO-002,1,Executive,,metro123,anita@metrogroup.local</pre>
     </div>
   </div>
 
-  <script src="app.js?v=20261013-1"></script>
+  <script src="app.js?v=20261031-1"></script>
 </body>
 </html>
 
