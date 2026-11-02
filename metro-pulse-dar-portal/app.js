@@ -9090,12 +9090,10 @@ function initDarVoiceRecognition() {
   let isRecording = false;
   let baseTextAtStart = "";
   let sessionFinalText = "";
-  let sessionInterimText = "";
   let draftSaveDebounceTimer = null;
   let restartTimeout = null;
 
   // Language preference: explicitly default to "en-IN" (Indian English)
-  // This prevents mobile browsers from defaulting to US English or regional scripts which corrupt Indian diction
   let activeLang = localStorage.getItem("metro_dar_voice_lang") || "en-IN";
   if (activeLang !== "en-IN" && activeLang !== "hi-IN") {
     activeLang = "en-IN";
@@ -9122,7 +9120,6 @@ function initDarVoiceRecognition() {
       activeLang = activeLang === "en-IN" ? "hi-IN" : "en-IN";
       localStorage.setItem("metro_dar_voice_lang", activeLang);
       updateLangToggleUI();
-      // If actively recording, commit text and restart recognition with the new language
       if (isRecording && recognition) {
         commitCurrentSessionText();
         try { recognition.stop(); } catch (err) {}
@@ -9130,8 +9127,97 @@ function initDarVoiceRecognition() {
     });
   }
 
+  // Assembles spoken transcript chunks into a clean, duplicate-free sentence,
+  // completely eliminating mobile/Android Chrome's cumulative repetition bug
+  // (e.g. "Money" + "money receipt" + "money receipt edit" -> "Money receipt edit")
+  function assembleTranscripts(resultsList) {
+    if (!resultsList || resultsList.length === 0) return "";
+
+    const rawPhrases = resultsList
+      .map(r => (typeof r === "string" ? r : (r[0]?.transcript || r.transcript || "")).trim())
+      .filter(Boolean);
+
+    if (rawPhrases.length === 0) return "";
+
+    let sentences = [];
+
+    for (const phrase of rawPhrases) {
+      if (sentences.length === 0) {
+        sentences.push(phrase);
+        continue;
+      }
+
+      const lastIdx = sentences.length - 1;
+      const prev = sentences[lastIdx];
+      const prevLower = prev.toLowerCase().trim();
+      const currLower = phrase.toLowerCase().trim();
+
+      // 1. Exact duplicate -> ignore
+      if (prevLower === currLower) {
+        continue;
+      }
+
+      // 2. Current starts with previous (Android cumulative extension)
+      // e.g. prev = "Money", curr = "money receipt" -> replace prev with curr
+      if (currLower.startsWith(prevLower)) {
+        sentences[lastIdx] = phrase;
+        continue;
+      }
+
+      // 3. Previous already contains current -> ignore current
+      // e.g. prev = "Money receipt edit work", curr = "money receipt" -> keep prev
+      if (prevLower.includes(currLower)) {
+        continue;
+      }
+
+      // 4. Shared prefix check: do prev and curr start with the same first word(s)?
+      // Handles Android speech recognizer refining a word (e.g. "Money receive" -> "money receipt edit")
+      const wordsPrev = prevLower.split(/\s+/);
+      const wordsCurr = currLower.split(/\s+/);
+
+      let commonPrefixWords = 0;
+      while (
+        commonPrefixWords < wordsPrev.length &&
+        commonPrefixWords < wordsCurr.length &&
+        wordsPrev[commonPrefixWords] === wordsCurr[commonPrefixWords]
+      ) {
+        commonPrefixWords++;
+      }
+
+      if (commonPrefixWords > 0 && (commonPrefixWords >= wordsPrev.length * 0.4 || commonPrefixWords >= 2 || wordsPrev.length <= 2)) {
+        sentences[lastIdx] = phrase;
+        continue;
+      }
+
+      // 5. Suffix-to-prefix overlap check (tail of prev matches head of curr)
+      // e.g. prev = "Money receipt", curr = "receipt edit work" -> "Money receipt edit work"
+      const maxOverlap = Math.min(wordsPrev.length, wordsCurr.length);
+      let overlapCount = 0;
+      for (let len = maxOverlap; len > 0; len--) {
+        const tailPrev = wordsPrev.slice(wordsPrev.length - len).join(" ");
+        const headCurr = wordsCurr.slice(0, len).join(" ");
+        if (tailPrev === headCurr) {
+          overlapCount = len;
+          break;
+        }
+      }
+
+      if (overlapCount > 0) {
+        const originalWordsPrev = prev.split(/\s+/);
+        const originalWordsCurr = phrase.split(/\s+/);
+        sentences[lastIdx] = originalWordsPrev.concat(originalWordsCurr.slice(overlapCount)).join(" ");
+        continue;
+      }
+
+      // 6. Distinct separate utterance -> append cleanly
+      sentences.push(phrase);
+    }
+
+    return sentences.join(" ").trim();
+  }
+
   // Domain terms and punctuation post-processing
-  function formatSpokenText(raw, lang, isInterim) {
+  function formatSpokenText(raw) {
     if (!raw) return "";
     let t = raw;
 
@@ -9169,26 +9255,10 @@ function initDarVoiceRecognition() {
     return t;
   }
 
-  function cleanJoin(base, addition) {
-    const b = (base || "").trim();
-    const a = (addition || "").trim();
-    if (!b) return a;
-    if (!a) return b;
-    if (b.endsWith("\n")) return b + a;
-    if (/^[.,!?:;]/.test(a)) return b + a;
-    return b + " " + a;
-  }
-
   function commitCurrentSessionText() {
-    if (!sessionFinalText && !sessionInterimText) return;
-    const finalClean = formatSpokenText(sessionFinalText, activeLang);
-    const interimClean = formatSpokenText(sessionInterimText, activeLang, true);
-    const combinedSession = cleanJoin(finalClean, interimClean);
-    if (combinedSession) {
-      baseTextAtStart = cleanJoin(baseTextAtStart, combinedSession);
-    }
+    if (!sessionFinalText) return;
+    baseTextAtStart = assembleTranscripts([baseTextAtStart, sessionFinalText]);
     sessionFinalText = "";
-    sessionInterimText = "";
   }
 
   function applyTextToInputs(text) {
@@ -9208,7 +9278,6 @@ function initDarVoiceRecognition() {
 
     updateDarTypingState();
 
-    // Debounce draft save (800ms) to keep UI thread fast and audio buffer clear
     clearTimeout(draftSaveDebounceTimer);
     draftSaveDebounceTimer = setTimeout(() => {
       const user = activeUser();
@@ -9224,12 +9293,10 @@ function initDarVoiceRecognition() {
       try { recognition.stop(); } catch (e) {}
     }
 
-    // Tactile confirmation on mobile
     if (navigator.vibrate) {
       try { navigator.vibrate([25, 40, 25]); } catch (e) {}
     }
 
-    // Visual indicators off
     voiceBtn.classList.remove("is-recording");
     voiceBtn.setAttribute("title", "Click to speak (Real-time voice-to-text dictation)");
     if (equalizerEl) {
@@ -9241,11 +9308,11 @@ function initDarVoiceRecognition() {
       pointInput.classList.remove("is-voice-listening");
     }
 
-    // Commit any in-flight speech cleanly
     commitCurrentSessionText();
-    applyTextToInputs(baseTextAtStart);
+    const finalFormatted = formatSpokenText(baseTextAtStart);
+    baseTextAtStart = finalFormatted;
+    applyTextToInputs(finalFormatted);
 
-    // Save final draft immediately
     clearTimeout(draftSaveDebounceTimer);
     const user = activeUser();
     if (user) saveCurrentDraftFromInputs(user);
@@ -9264,7 +9331,6 @@ function initDarVoiceRecognition() {
     const pointInput = document.getElementById("pointInput") || document.getElementById("mobilePointInput");
     baseTextAtStart = pointInput ? pointInput.value.trim() : "";
     sessionFinalText = "";
-    sessionInterimText = "";
 
     try {
       recognition = new SpeechRecognition();
@@ -9275,11 +9341,9 @@ function initDarVoiceRecognition() {
 
       recognition.onstart = () => {
         isRecording = true;
-        // Tactile vibration on touch (mobile)
         if (navigator.vibrate) {
           try { navigator.vibrate(45); } catch (e) {}
         }
-        // Visual indicator on microphone and textarea (No popup toast per user request!)
         voiceBtn.classList.add("is-recording");
         voiceBtn.setAttribute("title", "Listening attentively... Click to stop dictation");
         if (equalizerEl) {
@@ -9292,45 +9356,30 @@ function initDarVoiceRecognition() {
       };
 
       recognition.onresult = (event) => {
-        let curFinal = "";
-        let curInterim = "";
-
-        // Iterate the entire result list of the current recognition session
-        // This is mathematically immune to the Android Chrome resultIndex reset / duplicate bug
+        // Collect all non-empty raw transcript phrases from the current recognition session
+        const rawSessionPhrases = [];
         for (let i = 0; i < event.results.length; i++) {
           const res = event.results[i];
           if (!res || !res[0]) continue;
           const phrase = (res[0].transcript || "").trim();
-          if (!phrase) continue;
-
-          if (res.isFinal) {
-            curFinal += (curFinal ? " " : "") + phrase;
-          } else {
-            curInterim += (curInterim ? " " : "") + phrase;
-          }
+          if (phrase) rawSessionPhrases.push(phrase);
         }
 
-        sessionFinalText = curFinal;
-        sessionInterimText = curInterim;
+        // Assemble into a clean, duplicate-free session string
+        sessionFinalText = assembleTranscripts(rawSessionPhrases);
 
-        const formattedFinal = formatSpokenText(sessionFinalText, activeLang);
-        const formattedInterim = formatSpokenText(sessionInterimText, activeLang, true);
-
-        let liveText = baseTextAtStart;
-        if (formattedFinal) {
-          liveText = cleanJoin(liveText, formattedFinal);
-        }
-        if (formattedInterim) {
-          liveText = cleanJoin(liveText, formattedInterim);
+        // Combine with pre-existing text in the input
+        let fullText = baseTextAtStart;
+        if (sessionFinalText) {
+          fullText = assembleTranscripts([baseTextAtStart, sessionFinalText]);
         }
 
-        applyTextToInputs(liveText);
+        applyTextToInputs(formatSpokenText(fullText));
       };
 
       recognition.onerror = (event) => {
         console.warn("Speech recognition error:", event.error);
         if (event.error === "no-speech" || event.error === "aborted") {
-          // Normal pauses or browser restart; do not alert or stop
           return;
         }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -9345,19 +9394,14 @@ function initDarVoiceRecognition() {
       };
 
       recognition.onend = () => {
-        // Mobile browsers frequently stop continuous speech on short silence breaks
         if (isRecording) {
-          // Commit finalized session text into baseTextAtStart
           commitCurrentSessionText();
-
-          // Seamless auto-restart
           clearTimeout(restartTimeout);
           restartTimeout = setTimeout(() => {
             if (isRecording) {
               try {
                 recognition.start();
               } catch (e) {
-                // Micro-retry if browser needs brief moment
                 setTimeout(() => {
                   if (isRecording) {
                     try { recognition.start(); } catch (err) { stopRecognition(); }
@@ -9365,7 +9409,7 @@ function initDarVoiceRecognition() {
                 }, 200);
               }
             }
-          }, 100);
+          }, 120);
         } else {
           stopRecognition();
         }
